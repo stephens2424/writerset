@@ -27,18 +27,28 @@ type WriterSet struct {
 	mu sync.Mutex
 }
 
-// New initializes a new empty writer set.
+// New initializes a new empty writer set. This function is here for ease of
+// use and backward compatibility, but a zero-value WriterSet is valid and
+// ready for use.
 func New() *WriterSet {
-	return &WriterSet{
-		m:  make(map[io.Writer]chan error),
-		mu: sync.Mutex{},
+	return &WriterSet{}
+}
+
+func (ws *WriterSet) initWithMtx() {
+	if ws.m == nil {
+		ws.m = make(map[io.Writer]chan error)
 	}
 }
 
-// Add ensures w is in the set.
+// Add ensures w is in the set. w must be a valid map key or Add will panic.
+// The returned channel is written to if an error occurs writing to this writer,
+// and in that case, the writer is removed from the set. The error will be of type
+// ErrorPartialWrite.
 func (ws *WriterSet) Add(w io.Writer) <-chan error {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
+
+	ws.initWithMtx()
 
 	c, ok := ws.m[w]
 	if ok {
@@ -55,6 +65,8 @@ func (ws *WriterSet) Contains(w io.Writer) bool {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
+	ws.initWithMtx()
+
 	_, ok := ws.m[w]
 	return ok
 }
@@ -63,6 +75,9 @@ func (ws *WriterSet) Contains(w io.Writer) bool {
 func (ws *WriterSet) Remove(w io.Writer) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
+
+	ws.initWithMtx()
+
 	delete(ws.m, w)
 }
 
@@ -72,6 +87,8 @@ func (ws *WriterSet) Remove(w io.Writer) {
 func (ws *WriterSet) Write(b []byte) (int, error) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
+
+	ws.initWithMtx()
 
 	for w, c := range ws.m {
 		bs, err := w.Write(b)
@@ -95,6 +112,8 @@ func (ws *WriterSet) Write(b []byte) (int, error) {
 func (ws *WriterSet) Flush() {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
+
+	ws.initWithMtx()
 
 	for w := range ws.m {
 		if w, ok := w.(http.Flusher); ok {
