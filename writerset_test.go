@@ -70,11 +70,13 @@ func TestFail(t *testing.T) {
 
 	bufA := &bytes.Buffer{}
 	bufB := &bytes.Buffer{}
+	bufC := &bytes.Buffer{}
 
 	failB := &failWriter{failAfter: 2, w: bufB}
 
 	chA := ws.Add(bufA)
 	chB := ws.Add(failB)
+	chC := ws.Add(bufC)
 
 	n, err := fmt.Fprint(&ws, "123")
 	assert.Equal(t, 3, n)
@@ -82,26 +84,47 @@ func TestFail(t *testing.T) {
 
 	assert.Equal(t, "123", bufA.String())
 	assert.Equal(t, "12", bufB.String())
+	assert.Equal(t, "123", bufC.String())
 
-	var errA, errB error
+	assert.True(t, ws.Contains(bufC))
+	ws.Remove(bufC)
+	assert.False(t, ws.Contains(bufC))
 
-	select {
-	case errA = <-chA:
-	default:
-	}
-
-	select {
-	case errB = <-chB:
-	default:
-	}
-
+	// a should still be open
+	errA, isClosedA := checkErrChan(chA)
 	assert.NoError(t, errA)
+	assert.False(t, isClosedA)
+
+	// b should be closed with an error
+	errB, isClosedB := checkErrChan(chB)
 	assert.Equal(t, errB, ErrPartialWrite{
 		Writer:   failB,
 		Err:      errFailWriterHitLimit,
 		Expected: 3,
 		Wrote:    2,
 	})
+	assert.True(t, isClosedB)
+
+	// c should be closed with no error
+	errC, isClosedC := checkErrChan(chC)
+	assert.NoError(t, errC)
+	assert.True(t, isClosedC, chC)
+}
+
+func checkErrChan(ch <-chan error) (err error, isClosed bool) {
+	var isOK bool
+
+	select {
+	case err, isOK = <-ch:
+		if !isOK {
+			isClosed = true
+		} else {
+			_, isClosed = checkErrChan(ch)
+		}
+	default:
+	}
+
+	return
 }
 
 var errFailWriterHitLimit = errors.New("failing to write beyond limit")

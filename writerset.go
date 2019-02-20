@@ -43,7 +43,8 @@ func (ws *WriterSet) initWithMtx() {
 // Add ensures w is in the set. w must be a valid map key or Add will panic.
 // The returned channel is written to if an error occurs writing to this writer,
 // and in that case, the writer is removed from the set. The error will be of type
-// ErrorPartialWrite.
+// ErrorPartialWrite. The channel is closed when the writer is removed from the set,
+// with or without an error.
 func (ws *WriterSet) Add(w io.Writer) <-chan error {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -71,14 +72,19 @@ func (ws *WriterSet) Contains(w io.Writer) bool {
 	return ok
 }
 
-// Remove ensures w is not in the set.
+// Remove ensures w is not in the set. If it is in the set,
+// the error channel associated with it will be closed.
 func (ws *WriterSet) Remove(w io.Writer) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
 	ws.initWithMtx()
 
-	delete(ws.m, w)
+	ch, ok := ws.m[w]
+	if ok {
+		close(ch)
+		delete(ws.m, w)
+	}
 }
 
 // Write writes data to each underlying writer. If an error occurs on an underlying writer,
