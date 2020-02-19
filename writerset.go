@@ -8,18 +8,6 @@ import (
 	"sync"
 )
 
-// ErrPartialWrite encapsulates an error from a WriterSet.
-type ErrPartialWrite struct {
-	Writer          io.Writer
-	Err             error
-	Expected, Wrote int
-}
-
-// Error returns the error string from the underlying error.
-func (e ErrPartialWrite) Error() string {
-	return e.Err.Error()
-}
-
 // WriterSet wraps multiple writers like io.MultiWriter, but such that individual
 // writers are easy to add or remove as necessary.
 type WriterSet struct {
